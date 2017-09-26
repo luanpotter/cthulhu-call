@@ -50,6 +50,17 @@
             <artifactId>appengine-gcs-client</artifactId>
             <version>0.6</version>
         </dependency>
+        <dependency>
+            <groupId>xyz.luan</groupId>
+            <artifactId>http-facade</artifactId>
+            <version>1.6</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.8.2</version>
+        </dependency>
+
 
         <!-- Test Dependencies -->
         <dependency>
