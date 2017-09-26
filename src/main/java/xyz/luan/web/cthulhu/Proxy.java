@@ -15,24 +15,23 @@ import static com.google.common.io.ByteStreams.copy;
 
 public class Proxy extends HttpServlet {
 
-    private static final String SUZY = "https://susy.ic.unicamp.br:9999";
-    private static final String BUCKET = "susy-proxy.appspot.com";
+    private static final String BUCKET = "cthulhu-call.appspot.com";
 
     private static class Request {
         String contentType;
         InputStream is;
 
-        public Request(URLConnection c) throws IOException {
+        Request(URLConnection c) throws IOException {
             this.is = c.getInputStream();
             this.contentType = c.getHeaderField("Content-Type");
         }
 
-        public Request(InputStream is, String contentType) {
+        Request(InputStream is, String contentType) {
             this.is = is;
             this.contentType = contentType;
         }
 
-        public void response(HttpServletResponse resp) throws IOException {
+        void response(HttpServletResponse resp) throws IOException {
             resp.setContentType(contentType);
             copy(is, resp.getOutputStream());
         }
@@ -40,8 +39,43 @@ public class Proxy extends HttpServlet {
 
     @Override
     public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        String path = SUZY + request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        req(path).response(response);
+        String uuid = request.getHeader("cthulhu-uuid");
+        if (uuid == null || !uuid.matches("[a-zA-Z0-9\\-]*")) {
+            response.setStatus(460);
+            response.getWriter().write("Invalid uuid header; must exist and match [a-zA-Z0-9\\-]*");
+            response.getWriter().close();
+        } else {
+            String reset = request.getHeader("cthulhu-reset");
+            if (reset != null && "true".equalsIgnoreCase(reset)) {
+                resetAllFilesFrom(uuid);
+            } else {
+                String path = extractActualURL(request);
+                req(uuid, path).response(response);
+            }
+        }
+    }
+
+    private String extractActualURL(HttpServletRequest request) {
+        String domain = request.getHeader("cthulhu-domain"); // actually its protocol, subdomain, domain and port
+        return domain + request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+    }
+
+    private void resetAllFilesFrom(String uuid) {
+        deleteFolder(BUCKET, uuid);
+    }
+
+    private static void deleteFolder(String bucket, String folderName) {
+        GcsService gcsService = GcsServiceFactory.createGcsService();
+        try {
+            ListResult list = gcsService.list(bucket, new ListOptions.Builder().setPrefix(folderName).setRecursive(true).build());
+
+            while (list.hasNext()) {
+                ListItem item = list.next();
+                gcsService.delete(new GcsFilename(bucket, item.getName()));
+            }
+        } catch (IOException e) {
+            //Error handling
+        }
     }
 
     private URLConnection getUrlConnection(String path) throws IOException {
@@ -50,8 +84,8 @@ public class Proxy extends HttpServlet {
         return url;
     }
 
-    private Request req(String path) throws IOException {
-        GcsFilename fileName = new GcsFilename(BUCKET, path);
+    private Request req(String uuid, String path) throws IOException {
+        GcsFilename fileName = new GcsFilename(BUCKET, uuid + "/" + path);
         GcsService gcsService = GcsServiceFactory.createGcsService();
         GcsFileMetadata metadata = gcsService.getMetadata(fileName);
 
