@@ -9,6 +9,8 @@ import xyz.luan.facade.Util;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
@@ -176,9 +178,19 @@ public class Proxy extends BaseServlet {
     private void writeFile(GcsFilename fileName, Request req) throws IOException {
         GcsFileOptions options = new GcsFileOptions.Builder().mimeType(req.contentType).build();
         GcsOutputChannel outputChannel = gcsService.createOrReplace(fileName, options);
-        copy(req.is, Channels.newOutputStream(outputChannel));
-        req.is.reset();
+
+        byte[] bytes = toBytes(req.is);
+
+        req.is = new ByteArrayInputStream(bytes);
+
+        copy(new ByteArrayInputStream(bytes), Channels.newOutputStream(outputChannel));
         outputChannel.close();
+    }
+
+    private byte[] toBytes(InputStream stream) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        copy(stream, baos);
+        return baos.toByteArray();
     }
 }
 
