@@ -1,5 +1,6 @@
 package xyz.luan.web.cthulhu;
 
+import com.google.appengine.api.datastore.*;
 import com.google.appengine.tools.cloudstorage.*;
 import com.google.gson.Gson;
 import xyz.luan.facade.Base64;
@@ -12,14 +13,21 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
 import java.nio.channels.Channels;
+import java.util.Arrays;
 import java.util.Enumeration;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.google.common.io.ByteStreams.copy;
 
 public class Proxy extends BaseServlet {
 
+    private DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+    private GcsService gcsService = GcsServiceFactory.createGcsService();
+
     private static final String BUCKET = "cthulhu-call.appspot.com";
-    private static final int MAX_FILENAME_SIZE = 12;
+    private static final int MAX_FILENAME_SIZE = 128;
 
     private static class Request {
         String contentType;
@@ -73,6 +81,14 @@ public class Proxy extends BaseServlet {
 
     private void resetAllFilesFrom(String uuid) {
         deleteFolder(BUCKET, uuid);
+        deleteFileRefs(uuid);
+    }
+
+    private void deleteFileRefs(String uuid) {
+        Query.Filter filter = new Query.FilterPredicate("uuid", Query.FilterOperator.EQUAL, uuid);
+        List<Entity> files = datastore.prepare(new Query("file").setFilter(filter)).asList(FetchOptions.Builder.withDefaults());
+        List<Key> ids = files.stream().map(Entity::getKey).collect(Collectors.toList());
+        datastore.delete(ids);
     }
 
     private static void deleteFolder(String bucket, String folderName) {
@@ -93,18 +109,43 @@ public class Proxy extends BaseServlet {
         HttpFacade facade = facadeRequest(method, request);
         String key = extractKey(facade);
 
-        GcsFilename fileName = new GcsFilename(BUCKET, uuid + "/" + key);
-        GcsService gcsService = GcsServiceFactory.createGcsService();
-        GcsFileMetadata metadata = gcsService.getMetadata(fileName);
+        Entity fileRef = fetchFileRef(uuid, key);
+        if (fileRef == null) {
+            String fileId = UUID.randomUUID().toString();
+            GcsFilename fileName = generateFileName(uuid, fileId);
 
-        if (metadata == null) {
             Request req = new Request(facade.generateConnection());
-            writeFile(fileName, gcsService, req);
+
+            writeFile(fileName, req);
+            createFileRef(uuid, key, fileId);
+
             return req;
         } else {
+            String fileId = fileRef.getProperty("fileId").toString();
+            GcsFilename fileName = generateFileName(uuid, fileId);
+            GcsFileMetadata metadata = gcsService.getMetadata(fileName);
             GcsInputChannel inputChannel = gcsService.openReadChannel(fileName, 0);
             return new Request(Channels.newInputStream(inputChannel), metadata.getOptions().getMimeType());
         }
+    }
+
+    private GcsFilename generateFileName(String uuid, String fileId) {
+        return new GcsFilename(BUCKET, uuid + "/" + fileId);
+    }
+
+    private void createFileRef(String uuid, String key, String fileId) {
+        Entity newFileRef = new Entity("file", fileId);
+        newFileRef.setProperty("fileId", fileId);
+        newFileRef.setProperty("key", key);
+        newFileRef.setProperty("uuid", uuid);
+        datastore.put(newFileRef);
+    }
+
+    private Entity fetchFileRef(String uuid, String key) {
+        Query.Filter byKey = new Query.FilterPredicate("key", Query.FilterOperator.EQUAL, key);
+        Query.Filter byUuid = new Query.FilterPredicate("uuid", Query.FilterOperator.EQUAL, uuid);
+        Query.Filter combination = new Query.CompositeFilter(Query.CompositeFilterOperator.AND, Arrays.asList(byKey, byUuid));
+        return datastore.prepare(new Query("file").setFilter(combination)).asSingleEntity();
     }
 
     private String extractKey(HttpFacade facade) {
@@ -132,7 +173,7 @@ public class Proxy extends BaseServlet {
         return facade;
     }
 
-    private void writeFile(GcsFilename fileName, GcsService gcsService, Request req) throws IOException {
+    private void writeFile(GcsFilename fileName, Request req) throws IOException {
         GcsFileOptions options = new GcsFileOptions.Builder().mimeType(req.contentType).build();
         GcsOutputChannel outputChannel = gcsService.createOrReplace(fileName, options);
         copy(req.is, Channels.newOutputStream(outputChannel));

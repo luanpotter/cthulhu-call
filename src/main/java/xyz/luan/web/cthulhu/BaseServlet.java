@@ -50,7 +50,7 @@ public abstract class BaseServlet extends HttpServlet {
         } catch (Throwable t) {
             resp.setStatus(460);
             try (PrintWriter writer = resp.getWriter()) {
-                writer.write(t.getMessage());
+                writer.write(t.getMessage() == null ? "null" : t.getMessage());
                 handle(t);
             } catch (IOException ex) {
                 handle(ex);
