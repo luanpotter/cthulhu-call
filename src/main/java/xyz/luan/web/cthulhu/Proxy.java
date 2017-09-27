@@ -29,7 +29,6 @@ public class Proxy extends BaseServlet {
     private GcsService gcsService = GcsServiceFactory.createGcsService();
 
     private static final String BUCKET = "cthulhu-call.appspot.com";
-    private static final int MAX_FILENAME_SIZE = 128;
 
     private static class Request {
         String contentType;
@@ -151,8 +150,7 @@ public class Proxy extends BaseServlet {
     }
 
     private String extractKey(HttpFacade facade) {
-        String facadeId = facade.getBaseUrl() + Base64.encode(new Gson().toJson(facade).getBytes());
-        return facadeId.length() > MAX_FILENAME_SIZE ? facadeId.substring(0, MAX_FILENAME_SIZE) : facadeId;
+        return facade.getBaseUrl() + "::" + Base64.encode(new Gson().toJson(facade).getBytes());
     }
 
     private HttpFacade facadeRequest(String method, HttpServletRequest request) throws IOException {
