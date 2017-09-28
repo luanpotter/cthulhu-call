@@ -27,3 +27,7 @@ You can always generate a random new UUID!
 
 That's it!
 
+What else?
+===
+
+For a more complete feature set, try our friend [Volp](http://volp-application.appspot.com)!
