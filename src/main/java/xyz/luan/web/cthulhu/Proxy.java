@@ -137,7 +137,7 @@ public class Proxy extends BaseServlet {
     private void createFileRef(String uuid, String key, String fileId) {
         Entity newFileRef = new Entity("file", fileId);
         newFileRef.setProperty("fileId", fileId);
-        newFileRef.setProperty("key", key);
+        newFileRef.setProperty("key", new Text(key));
         newFileRef.setProperty("uuid", uuid);
         datastore.put(newFileRef);
     }
