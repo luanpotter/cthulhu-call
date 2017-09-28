@@ -137,13 +137,13 @@ public class Proxy extends BaseServlet {
     private void createFileRef(String uuid, String key, String fileId) {
         Entity newFileRef = new Entity("file", fileId);
         newFileRef.setProperty("fileId", fileId);
-        newFileRef.setProperty("key", new Text(key));
+        newFileRef.setIndexedProperty("key", new Text(key));
         newFileRef.setProperty("uuid", uuid);
         datastore.put(newFileRef);
     }
 
     private Entity fetchFileRef(String uuid, String key) {
-        Query.Filter byKey = new Query.FilterPredicate("key", Query.FilterOperator.EQUAL, key);
+        Query.Filter byKey = new Query.FilterPredicate("key", Query.FilterOperator.EQUAL, new Text(key));
         Query.Filter byUuid = new Query.FilterPredicate("uuid", Query.FilterOperator.EQUAL, uuid);
         Query.Filter combination = new Query.CompositeFilter(Query.CompositeFilterOperator.AND, Arrays.asList(byKey, byUuid));
         return datastore.prepare(new Query("file").setFilter(combination)).asSingleEntity();
