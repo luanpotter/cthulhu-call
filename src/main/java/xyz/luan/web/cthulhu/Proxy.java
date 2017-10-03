@@ -15,15 +15,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
 import java.nio.channels.Channels;
-import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.UUID;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import static com.google.common.io.ByteStreams.copy;
 
 public class Proxy extends BaseServlet {
+
+    private final Logger logger = Logger.getLogger(Proxy.class.getName());
 
     private DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
     private GcsService gcsService = GcsServiceFactory.createGcsService();
@@ -52,13 +54,29 @@ public class Proxy extends BaseServlet {
 
     @Override
     public void process(String method, HttpServletRequest request, HttpServletResponse response) throws IOException {
+        logger.info("------------- HEADERS -------------");
+        Enumeration headers = request.getHeaderNames();
+        while (headers.hasMoreElements()) {
+            String header = headers.nextElement().toString();
+            logger.info("HEADER: " + header + ": " + request.getHeader(header));
+        }
+        logger.info("-----------------------------------");
+
         String uuid = extractUuid(request);
         boolean reset = extractReset(request);
 
         if (reset) {
+            if (uuid == null) {
+                throw new RuntimeException("uuid is required when reseting!");
+            }
             resetAllFilesFrom(uuid);
         } else {
-            req(uuid, method, request).response(response);
+            if (uuid == null) {
+                HttpFacade facade = facadeRequest(method, request);
+                new Request(facade.generateConnection()).response(response);
+            } else {
+                req(uuid, method, request).response(response);
+            }
         }
     }
 
@@ -69,7 +87,9 @@ public class Proxy extends BaseServlet {
 
     private String extractUuid(HttpServletRequest request) {
         String uuid = request.getHeader("cthulhu-uuid");
-        if (uuid == null || !uuid.matches("[a-zA-Z0-9\\-]*")) {
+        if (uuid == null || uuid.isEmpty()) {
+            uuid = null;
+        } else if (!uuid.matches("[a-zA-Z0-9\\-]*")) {
             throw new RuntimeException("\"Invalid uuid header; must exist and match [a-zA-Z0-9\\\\-]*\"");
         }
         return uuid;
